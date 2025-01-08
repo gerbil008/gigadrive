@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF über WebSocket senden</title>
+</head>
+<body>
+    <h1>PDF-Datei über WebSocket senden</h1>
+    <p>Wähle eine PDF-Datei aus, um sie an den Server zu senden:</p>
+    <input type="file" id="fileInput" accept=".pdf">
+    <p id="status"></p>
+
+    <script>
+        function encodeToBase64(data) {
+    return btoa(String.fromCharCode(...new Uint8Array(data)));
+}
+        const strs = "��F�l��F�l��F�l�}lc���6���}lc�ط6���}kc��ط6��6��6��6��6����jc��د6�6�6����jc���G!��C���po���?�H";
+        const str1 = "97%98";
+        for(let i  of strs){
+            console.log(i.charCodeAt(0));
+        }
+
+        for(let i  of str1.split('%')){
+            console.log(String.fromCharCode(parseInt(i)));
+        }
+        console.log(btoa("Hallo"));
+
+    </script>
+</body>
+</html>
