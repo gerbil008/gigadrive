@@ -104,7 +104,15 @@ bool remove_entry_from_json_array(json& jsonArray, const std::string& entryToRem
     return false;
 }
 
+void on_open(connection_hdl hdl) {
+    m_connections.insert(hdl);
+    std::cout << "Client connected! Total clients: " << m_connections_files.size() << std::endl;
+}
 
+void on_close(connection_hdl hdl) {
+    m_connections.erase(hdl);
+    std::cout << "Client disconnected! Total clients: " << m_connections_files.size() << std::endl;
+}
 
 void delete_json(std::string filename){
     std::string fileContent = read_file("files.json");

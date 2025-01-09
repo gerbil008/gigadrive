@@ -4,6 +4,8 @@ let response = "";
 let wopened = false;
 let running = false;
 let identnum;
+let wwopened = false;
+let response1 = "";
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -78,11 +80,12 @@ async function write_file() {
         const path = `w/${file.name}%${totalChunks}`;
         csend(path);
         console.log("requested");
-        while(response == ""){
+        while(response1 == ""){
             await sleep(10);
         }
         identnum = response;
-        reponse = "";
+        response1 = "";
+        console.log("identum", identnum);
         console.log(`Informing server: ${path}`);
     } else {
         console.error("WebSocket is not open!");
@@ -104,7 +107,7 @@ async function write_file() {
         
         try {
             const chunkData = await readChunk(start, end);
-            if (wopened) {
+            if (wwopened) {
                 msend(identnum+chunkData); 
                 console.log(`Sent chunk ${currentChunk + 1} of ${totalChunks}`);
             } else {
@@ -157,5 +160,27 @@ socket.onclose = function(event) {
 
 socket.onerror = function(error) {
     wopened = false;
+    document.getElementById('warningPopupCon').style.display = 'flex';
+};
+
+socket1.onopen = async function(e) {
+    wwopened = true;
+};
+
+socket1.onmessage = function(event) {
+    response1 = event.data;
+};
+
+socket1.onclose = function(event) {
+    wwopened = false;
+  if (event.wasClean) {
+    document.getElementById('warningPopupCon').style.display = 'flex';
+  } else {
+    document.getElementById('warningPopupCon').style.display = 'flex';
+  }
+};
+
+socket1.onerror = function(error) {
+    wwopened = false;
     document.getElementById('warningPopupCon').style.display = 'flex';
 };

@@ -75,15 +75,16 @@ std::shared_ptr<boost::asio::ssl::context> on_tls_init_file(websocketpp::connect
     return ctx;
 }
 
-void on_open(connection_hdl hdl) {
+void on_open_file(connection_hdl hdl) {
     m_connections_files.insert(hdl);
     std::cout << "Client connected! Total clients: " << m_connections_files.size() << std::endl;
 }
 
-void on_close(connection_hdl hdl) {
+void on_close_file(connection_hdl hdl) {
     m_connections_files.erase(hdl);
     std::cout << "Client disconnected! Total clients: " << m_connections_files.size() << std::endl;
 }
+
 
 void send_file(websocketpp::connection_hdl hdl, const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
@@ -116,8 +117,8 @@ void on_message_file(connection_hdl hdl, server::message_ptr msg) {
 void setup_for_file_cummonication(){
     m_server_files.init_asio();
     m_server_files.set_tls_init_handler(bind(&on_tls_init_file, std::placeholders::_1));
-    m_server_files.set_open_handler(bind(&on_open, std::placeholders::_1));
-    m_server_files.set_close_handler(bind(&on_close, std::placeholders::_1));
+    m_server_files.set_open_handler(bind(&on_open_file, std::placeholders::_1));
+    m_server_files.set_close_handler(bind(&on_close_file, std::placeholders::_1));
     m_server_files.set_message_handler(bind(&on_message_file, std::placeholders::_1, std::placeholders::_2));
     m_server_files.listen(wport_files);
     m_server_files.start_accept();
