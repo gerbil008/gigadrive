@@ -106,12 +106,12 @@ bool remove_entry_from_json_array(json& jsonArray, const std::string& entryToRem
 
 void on_open(connection_hdl hdl) {
     m_connections.insert(hdl);
-    std::cout << "Client connected! Total clients: " << m_connections_files.size() << std::endl;
+    std::cout << "Client connected! Total clients: " << m_connections.size() << std::endl;
 }
 
 void on_close(connection_hdl hdl) {
     m_connections.erase(hdl);
-    std::cout << "Client disconnected! Total clients: " << m_connections_files.size() << std::endl;
+    std::cout << "Client disconnected! Total clients: " << m_connections.size() << std::endl;
 }
 
 void delete_json(std::string filename){
@@ -197,6 +197,8 @@ void on_message(connection_hdl hdl, server::message_ptr msg) {
 }
 
 void setup_for_cummonication(){
+    m_server.clear_access_channels(websocketpp::log::alevel::all);
+    m_server.clear_error_channels(websocketpp::log::elevel::all);
     m_server.init_asio();
     m_server.set_tls_init_handler(bind(&on_tls_init, std::placeholders::_1));
     m_server.set_open_handler(bind(&on_open, std::placeholders::_1));

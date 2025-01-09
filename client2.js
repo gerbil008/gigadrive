@@ -68,6 +68,14 @@ async function read_file(filename){
 
 }
 
+function arrayBufferToHex(buffer) {
+    const byteArray = new Uint8Array(buffer);
+    return Array.from(byteArray)
+        .map(byte => byte.toString(16).padStart(2, "0"))
+        .join("");
+}
+
+
 async function write_file() {
     const fileInput = document.getElementById("addFile");
     const file = fileInput.files[0];
@@ -80,11 +88,13 @@ async function write_file() {
         const path = `w/${file.name}%${totalChunks}`;
         csend(path);
         console.log("requested");
-        while(response1 == ""){
+        while(response == ""){
             await sleep(10);
+            console.log("waiting");
         }
+        console.log("got");
         identnum = response;
-        response1 = "";
+        response = "";
         console.log("identum", identnum);
         console.log(`Informing server: ${path}`);
     } else {
@@ -108,7 +118,9 @@ async function write_file() {
         try {
             const chunkData = await readChunk(start, end);
             if (wwopened) {
-                msend(identnum+chunkData); 
+                const hexData = arrayBufferToHex(chunkData);
+                console.log(hexData);
+                msend(identnum+hexData); 
                 console.log(`Sent chunk ${currentChunk + 1} of ${totalChunks}`);
             } else {
                 console.error("WebSocket is not open during chunk sending!");
