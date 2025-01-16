@@ -147,6 +147,7 @@ std::string list_files(std::string folder){
     return files.dump(4);
 }
 
+
 void on_message(connection_hdl hdl, server::message_ptr msg) {
     std::cout << "Received message: " << msg->get_payload() << std::endl;
     const string recvmsg = msg->get_payload();
@@ -157,21 +158,22 @@ void on_message(connection_hdl hdl, server::message_ptr msg) {
         std::ofstream file(path+it->second,  std::ios::binary);
         file.write(recvmsg.c_str(), recvmsg.size());
         file.close();
-        m_server.send(hdl, "d", websocketpp::frame::opcode::text);
         filenames.erase(hdl);
     }
     switch(recvmsg[0]){
         case 'm':
             make_file(strip_first(recvmsg));
-            m_server.send(hdl, "d", websocketpp::frame::opcode::text);
             break;
         case 'w':{
+            write_file(path+read_until_char(strip_first(recvmsg), '%'), "");
             dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
             chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
             m_server.send(hdl, std::to_string(identnum), websocketpp::frame::opcode::text);
             break;}
         case 'r':
-           send_file(hdl, path+strip_first(recvmsg));
+           //send_file(hdl, path+strip_first(recvmsg));
+            send_file_chunker(hdl, path+strip_first(recvmsg));
+            log("try_send_file");
             break;
         case 'l':
             m_server.send(hdl, list_files(strip_first(recvmsg)), websocketpp::frame::opcode::text);
@@ -183,7 +185,6 @@ void on_message(connection_hdl hdl, server::message_ptr msg) {
                 fs::remove(folder);
             }
             delete_json(trim_ex(strip_first(recvmsg)));
-            m_server.send(hdl, "d", websocketpp::frame::opcode::text);
             break;}
         case 'a':
             m_server.send(hdl, std::to_string(get_storage_free(path)), websocketpp::frame::opcode::text);
