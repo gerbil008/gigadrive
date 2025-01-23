@@ -1,22 +1,11 @@
-//g++ -std=c++11 server-websocket.cpp -o server -lboost_system -lpthread
-//y=true, n=false, c=how many clients, j=check json, s=send json, r=receive new json
+#include <ixwebsocket/IXWebSocketServer.h>
 #include "file_server2.hpp"
-#include <websocketpp/config/asio.hpp>
-#include <websocketpp/server.hpp>
 
-using websocketpp::connection_hdl;
-typedef websocketpp::server<websocketpp::config::asio_tls> server;
-
-
-std::map<connection_hdl, std::string, std::owner_less<connection_hdl>> filenames;
-std::set<connection_hdl, std::owner_less<connection_hdl>> m_connections;
-
-server m_server;
-typedef websocketpp::server<websocketpp::config::asio_tls> server;
-using websocketpp::connection_hdl;
+ix::WebSocketServer cum_server(wport, "0.0.0.0");
+std::map<ix::WebSocket*, std::string> filenames;
+std::set<ix::WebSocket*> m_connections;
 
 int identnum = 1;
-
 
 int get_storage_free(const std::string& path) {
     struct statvfs buffer;
@@ -79,23 +68,6 @@ int make_file(std::string filename){
     return 0;
 }
 
-std::shared_ptr<boost::asio::ssl::context> on_tls_init(websocketpp::connection_hdl hdl) {
-    auto ctx = std::make_shared<boost::asio::ssl::context>(boost::asio::ssl::context::tlsv12);
-
-    try {
-        ctx->set_options(boost::asio::ssl::context::default_workarounds |
-                         boost::asio::ssl::context::no_sslv2 |
-                         boost::asio::ssl::context::no_sslv3 |
-                         boost::asio::ssl::context::single_dh_use);
-        ctx->use_certificate_chain_file("fullchain_own.pem");  
-        ctx->use_private_key_file("privkey_own.pem", boost::asio::ssl::context::pem);  
-
-    } catch (std::exception& e) {
-        std::cout << "Error setting up TLS: " << e.what() << std::endl;
-    }
-
-    return ctx;
-}
 
 
 bool remove_entry_from_json_array(json& jsonArray, const std::string& entryToRemove) {
@@ -110,15 +82,6 @@ bool remove_entry_from_json_array(json& jsonArray, const std::string& entryToRem
     return false;
 }
 
-void on_open(connection_hdl hdl) {
-    m_connections.insert(hdl);
-    std::cout << "Client connected! Total clients: " << m_connections.size() << std::endl;
-}
-
-void on_close(connection_hdl hdl) {
-    m_connections.erase(hdl);
-    std::cout << "Client disconnected! Total clients: " << m_connections.size() << std::endl;
-}
 
 void delete_json(std::string filename){
     std::string fileContent = read_file("files.json");
@@ -154,17 +117,33 @@ std::string list_files(std::string folder){
 }
 
 
-void on_message(connection_hdl hdl, server::message_ptr msg) {
-    std::cout << "Received message: " << msg->get_payload() << std::endl;
-    const string recvmsg = msg->get_payload();
-    //cout<<recvmsg<<endl;
+void setup_for_cummonication(){
+cum_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket & webSocket, const ix::WebSocketMessagePtr & msg) {
+
+    std::cout << "id " << connectionState->getId() << std::endl;
+
+    if (msg->type == ix::WebSocketMessageType::Open)
+    {
+            m_connections.insert(&webSocket);
+            std::cout << "Client connected! Total clients: " << m_connections.size() << std::endl;
+    }
+
+    else if(msg->type == ix::WebSocketMessageType::Close || msg->type == ix::WebSocketMessageType::Error){
+        log("Connection with close with id: "+connectionState->getId());
+        m_connections.erase(&webSocket);
+    }
+    else if (msg->type == ix::WebSocketMessageType::Message)
+    {
+        std::cout << "Received: " << msg->str << std::endl;
+
+    const std::string recvmsg = msg->str;
     cout<<recvmsg[0]<<endl;
-    auto it = filenames.find(hdl);
+    auto it = filenames.find(&webSocket);
     if(it != filenames.end()){
         std::ofstream file(path+it->second,  std::ios::binary);
         file.write(recvmsg.c_str(), recvmsg.size());
         file.close();
-        filenames.erase(hdl);
+        filenames.erase(&webSocket);
     }
     switch(recvmsg[0]){
         case 'm':
@@ -175,11 +154,11 @@ void on_message(connection_hdl hdl, server::message_ptr msg) {
             log("cleared file: "+path+read_until_char(strip_first(recvmsg), '%'));
             dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
             chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
-            m_server.send(hdl, std::to_string(identnum), websocketpp::frame::opcode::text);
+            webSocket.send(std::to_string(identnum));
             identnum++;
             break;}
         case 'l':
-            m_server.send(hdl, list_files(strip_first(recvmsg)), websocketpp::frame::opcode::text);
+            webSocket.send(list_files(strip_first(recvmsg)));
             break;
         case 'd':{
             std::remove((path+strip_first(recvmsg)).c_str());
@@ -190,30 +169,23 @@ void on_message(connection_hdl hdl, server::message_ptr msg) {
             delete_json(trim_ex(strip_first(recvmsg)));
             break;}
         case 'a':
-            m_server.send(hdl, std::to_string(get_storage_free(path)), websocketpp::frame::opcode::text);
+            webSocket.send(std::to_string(get_storage_free(path)));
             break;
         case 'f':
-            m_server.send(hdl, std::to_string(get_storage_full(path)), websocketpp::frame::opcode::text);
+            webSocket.send(std::to_string(get_storage_full(path)));
             break; 
         default:
             break;
     }
-}
 
-void setup_for_cummonication(){
-    m_server.clear_access_channels(websocketpp::log::alevel::all);
-    m_server.clear_error_channels(websocketpp::log::elevel::all);
-    m_server.init_asio();
-    m_server.set_tls_init_handler(bind(&on_tls_init, std::placeholders::_1));
-    m_server.set_open_handler(bind(&on_open, std::placeholders::_1));
-    m_server.set_close_handler(bind(&on_close, std::placeholders::_1));
-    m_server.set_message_handler(bind(&on_message, std::placeholders::_1, std::placeholders::_2));
-    m_server.listen(wport);
-    m_server.start_accept();
-    m_server.run();
-}
+    }
+});
 
-    
+auto res = cum_server.listen();
+cum_server.disablePerMessageDeflate();
+cum_server.start();
+cum_server.wait();}
+
 int main() {
     std::thread t(setup_for_file_cummonication);
     t.detach();

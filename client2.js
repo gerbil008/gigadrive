@@ -25,9 +25,8 @@ function msend(msg) {
 }
 
 sleep(500);
-let socket = new WebSocket("wss://gigadrive.ddns.net:12369");
-let socket1 = new WebSocket("ws://gigadrive.ddns.net:12368");
-
+let socket = new WebSocket("ws://localhost:12369");
+let socket1 = new WebSocket("ws://localhost:12368");
 
 async function delete_file(filename) {
     running = true;
@@ -68,144 +67,10 @@ function stringToArrayBuffer(hexString) {
 }
 
 
-
-async function write_file() {
-    const fileInput = document.getElementById("addFile");
-    const file = fileInput.files[0];
-    const reader = new FileReader();
-    const chunkSize = 2 * 1024 * 1024;
-    const totalChunks = Math.ceil(file.size / chunkSize);
-    let currentChunk = 0;
-
-    if (wopened) {
-        const path = `w/${file.name}%${totalChunks}`;
-        csend(path);
-        console.log("requested");
-        while (response == "") {
-            await sleep(10);
-            console.log("waiting");
-        }
-        console.log("got");
-        identnum = response;
-        response = "";
-        console.log("identum", identnum);
-        console.log(`Informing server: ${path}`);
-    } else {
-        console.error("WebSocket is not open!");
-        return false;
-    }
-
-    const readChunk = (start, end) => {
-        return new Promise((resolve, reject) => {
-            const blob = file.slice(start, end);
-            reader.onload = () => resolve(reader.result);
-            //reader.onerror = () => reject("Failed to read file chunk.");
-            reader.readAsArrayBuffer(blob);
-        });
-    };
-
-    for (currentChunk = 0; currentChunk < totalChunks; currentChunk++) {
-        const start = currentChunk * chunkSize;
-        const end = Math.min(start + chunkSize, file.size);
-
-        try {
-            const chunkData = await readChunk(start, end);
-            if (wwopened) {
-                console.log(chunkData);
-                msend(identnum);
-                sleep(500);
-                console.log(`Sent chunk ${currentChunk + 1} of ${totalChunks}`);
-            } else {
-                console.error("WebSocket is not open during chunk sending!");
-                return false;
-            }
-        } catch (error) {
-            console.error(error);
-            return false;
-        }
-
-    }
-
-    console.log("All chunks sent.");
-    return true;
-}
-
-const chunksize = 2 * 1024 * 1024; // Größe jedes Chunks in Bytes
-const send_delay = 50; // Verzögerung in Millisekunden
+const chunksize = 2 * 1024 * 1024; 
+const send_delay = 200; 
 
 
-async function sendChunks() {
-    const fileInput = document.getElementById("addFile");
-    const file = fileInput.files[0];
-    const size = file.size;
-    const totalChunks = Math.ceil(size / chunksize);
-    console.log(`Total chunks: ${totalChunks}`);
-    if (wopened) {
-        const path = `w/${file.name}%${totalChunks}`;
-        csend(path);
-        console.log("requested");
-        while (response == "") {
-            await sleep(10);
-            console.log("waiting");
-        }
-        console.log("got");
-        identnum = response;
-        response = "";
-        console.log("identum", identnum);
-        console.log(`Informing server: ${path}`);
-    } else {
-        console.error("WebSocket is not open!");
-        return false;
-    }
-
-    let currentChunk = 0;
-    const reader = new FileReader();
-
-    reader.onload = function (event) {
-        if (event.target.error) {
-            console.error("Error reading file:", event.target.error);
-            return;
-        }
-
-        const chunkData = event.target.result; // ArrayBuffer des aktuellen Chunks
-        console.log(`Sending chunk ${currentChunk + 1} out of ${totalChunks}`);
-        const decoder = new TextDecoder();
-        const chunkString = decoder.decode(chunkData); // Konvertiert ArrayBuffer zu String
-        console.log(identnum);
-        console.log(`identsrojufgjh: ${identnum}`);
-        // Füge die Identifikationsnummer und die Daten zusammen
-        const combinedString = `${identnum}${chunkString}`;
-
-        // Sende die kombinierte Nachricht über den WebSocket
-        socket1.send(combinedString);
-
-        // Sende die kombinierten Daten
-        console.log(combinedString);
-        console.log(`Sending chunk ${currentChunk + 1} out of ${totalChunks}`);
-
-        //socket1.send(identnum+chunkData);
-
-        currentChunk++;
-
-        if (currentChunk < totalChunks) {
-            setTimeout(() => readNextChunk(), send_delay);
-        } else {
-            console.log("All chunks sent. Sending completion message.");
-        }
-    };
-
-    function readNextChunk() {
-        const start = currentChunk * chunksize;
-        const end = Math.min(start + chunksize, size);
-        const blob = file.slice(start, end);
-
-        // Lies den nächsten Chunk als ArrayBuffer
-        reader.readAsArrayBuffer(blob);
-    }
-
-    // Start der ersten Leseoperation
-    readNextChunk();
-}
 
 
 
@@ -221,6 +86,61 @@ async function make_file(filename) {
         }
     }
 }
+
+async function sendChunks() {
+    console.log("Start sending");
+    const fileInput = document.getElementById("addFile");
+    const file = fileInput.files[0];
+    const size = file.size;
+    const totalChunks = Math.ceil(size / chunksize);
+
+    if (wopened) {
+        const path = `w/${file.name}%${totalChunks}`;
+        csend(path);
+        while (response === "") {
+            await sleep(10);
+        }
+        identnum = response;
+        response = "";
+    } else {
+        console.error("WebSocket is not open!");
+        return false;
+    }
+
+    let currentChunk = 0;
+    const reader = new FileReader();
+
+    reader.onload = function (event) {
+        if (event.target.error) {
+            console.error("Error reading file:", event.target.error);
+            return;
+        }
+
+        const chunkData = new Uint8Array(event.target.result);
+        const identnumBytes = new TextEncoder().encode(identnum);
+        const combined = new Uint8Array(identnumBytes.length + chunkData.length);
+        combined.set(identnumBytes, 0);
+        combined.set(chunkData, identnumBytes.length);
+        console.log(combined);
+        socket1.send(combined);
+
+        currentChunk++;
+
+        if (currentChunk < totalChunks) {
+            setTimeout(() => readNextChunk(), send_delay);
+        }
+    };
+
+    function readNextChunk() {
+        const start = currentChunk * chunksize;
+        const end = Math.min(start + chunksize, size);
+        const blob = file.slice(start, end);
+        reader.readAsArrayBuffer(blob);
+    }
+
+    readNextChunk();
+}
+
 
 
 
