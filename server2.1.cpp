@@ -1,13 +1,19 @@
 //g++ -std=c++11 server-websocket.cpp -o server -lboost_system -lpthread
 //y=true, n=false, c=how many clients, j=check json, s=send json, r=receive new json
-#include "file_server.hpp"
+#include "file_server2.hpp"
+#include <websocketpp/config/asio.hpp>
+#include <websocketpp/server.hpp>
 
+using websocketpp::connection_hdl;
+typedef websocketpp::server<websocketpp::config::asio_tls> server;
 
 
 std::map<connection_hdl, std::string, std::owner_less<connection_hdl>> filenames;
 std::set<connection_hdl, std::owner_less<connection_hdl>> m_connections;
 
 server m_server;
+typedef websocketpp::server<websocketpp::config::asio_tls> server;
+using websocketpp::connection_hdl;
 
 int identnum = 1;
 
@@ -166,15 +172,12 @@ void on_message(connection_hdl hdl, server::message_ptr msg) {
             break;
         case 'w':{
             write_file(path+read_until_char(strip_first(recvmsg), '%'), "");
+            log("cleared file: "+path+read_until_char(strip_first(recvmsg), '%'));
             dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
             chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
             m_server.send(hdl, std::to_string(identnum), websocketpp::frame::opcode::text);
+            identnum++;
             break;}
-        case 'r':
-           //send_file(hdl, path+strip_first(recvmsg));
-            send_file_chunker(hdl, path+strip_first(recvmsg));
-            log("try_send_file");
-            break;
         case 'l':
             m_server.send(hdl, list_files(strip_first(recvmsg)), websocketpp::frame::opcode::text);
             break;

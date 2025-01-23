@@ -24,7 +24,7 @@
 
 using json = nlohmann::json;
 
-const int chunksize = 2;
+const int chunksize = 200;
 
 #define wport 12369
 #define wport_files 12368
@@ -150,7 +150,7 @@ void send_file_chunker(connection_hdl hdl, std::string filename)
                 log("Chunk " + std::to_string(i + 1) + " out of " + std::to_string(chunks));
                 std::string substr = file_data.substr(i * chunksize, +chunksize);
                 m_server_files.send(hdl, substr, websocketpp::frame::opcode::binary);
-                sleep(0.1);
+                sleep(0.5);
             }
             m_server_files.send(hdl, "e", websocketpp::frame::opcode::text);
             sleep(1);
@@ -160,9 +160,8 @@ void send_file_chunker(connection_hdl hdl, std::string filename)
         {
             m_server_files.send(hdl, file_data,  websocketpp::frame::opcode::text);
             log(file_data);
-            m_server_files.send(hdl, "moin", websocketpp::frame::opcode::text);
             log("send file data");
-            sleep(0.1);
+            sleep(0.5);
             m_server_files.send(hdl, "e", websocketpp::frame::opcode::text);
         }
     }
@@ -177,7 +176,6 @@ void on_message_file(connection_hdl hdl, server::message_ptr msg)
     {
         send_file_chunker(hdl, path + strip_first(recvmsg));
         log("try_send_file");
-        m_server_files.send(hdl, "sigma",  websocketpp::frame::opcode::text);
 
     }
     std::cout << recvmsg[0] << std::endl;
@@ -190,7 +188,6 @@ void on_message_file(connection_hdl hdl, server::message_ptr msg)
     if (entry != dateinamen_recv.end())
     {
         log("entry filename" + entry->second);
-        // hexToFile(strip_first(recvmsg), path+entry->second);
         std::ofstream file(path + entry->second, std::ios::binary | std::ios::app);
         file.write(strip_first(recvmsg).c_str(), recvmsg.size());
         file.close();
@@ -212,8 +209,10 @@ void setup_for_file_cummonication()
     log("Start setup file server");
     m_server_files.clear_access_channels(websocketpp::log::alevel::all);
     m_server_files.clear_error_channels(websocketpp::log::elevel::all);
+
     m_server_files.init_asio();
     m_server_files.set_tls_init_handler(bind(&on_tls_init_file, std::placeholders::_1));
+
     m_server_files.set_open_handler(bind(&on_open_file, std::placeholders::_1));
     m_server_files.set_close_handler(bind(&on_close_file, std::placeholders::_1));
     m_server_files.set_message_handler(bind(&on_message_file, std::placeholders::_1, std::placeholders::_2));
