@@ -18,6 +18,7 @@
 #include <memory>
 #include <sys/statvfs.h>
 #include <mutex>
+#include <sstream>
 
 using json = nlohmann::json;
 
@@ -40,6 +41,7 @@ std::map<int, std::string> dateinamen_recv;
 std::map<int, int> chunks_recv;
 std::map<int, std::string> dateinamen_send;
 std::vector<ix::WebSocket *> active_conns;
+std::string ca_path = "";
 
 void log(std::string msg)
 {
@@ -71,6 +73,14 @@ int web_send(int index, std::string str)
     }
 }
 
+int get_ident(std::string &msg){
+
+    std::string first = msg.substr(0, 3);
+    int number;
+    std::istringstream(first) >> number;
+    return number;
+}
+
 void send_file_chunker(int index, std::string filename)
 {
     log("involved file chunker");
@@ -80,7 +90,6 @@ void send_file_chunker(int index, std::string filename)
     {
         log("opened file sucessfully");
         log("file content");
-        // log(file_data.c_str());
         long double size = file.tellg();
         long long test_int;
         if (size > chunksize)
@@ -97,7 +106,6 @@ void send_file_chunker(int index, std::string filename)
             for (int i = 0; i < chunks; i++)
             {
                 log("Chunk " + std::to_string(i + 1) + " out of " + std::to_string(chunks));
-                // std::string substr = file_data.substr(i * chunksize, i* chunksize +chunksize);
                 char buf[chunksize];
                 file.seekg(i * chunksize);
                 std::string substr;
@@ -149,8 +157,23 @@ void send_file_chunker(int index, std::string filename)
     }
 }
 
+std::string download(const std::string& url, const std::string& downloadPath) {
+    std::string outputTemplate = downloadPath + "/%(title)s.%(ext)s";
+    std::string request = "yt-dlp -f mp4 -o \"" + outputTemplate + "\" \"" + url + "\"";
+    int result = system(request.c_str());
+    std::string fileName = downloadPath + "/%(title)s.mp4";  
+    return fileName;
+}
+
 void setup_for_file_cummonication()
 {
+    ix::SocketTLSOptions tlsOptions;
+    tlsOptions.certFile = ca_path+"fullchain.pem";
+    tlsOptions.keyFile = ca_path+"privkey.pem";
+    tlsOptions.caFile = ca_path+"fullchain.pem";
+
+    file_server.setTLSOptions(tlsOptions);
+
     file_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket &webSocket, const ix::WebSocketMessagePtr &msg)
                                            {
     webSocket.setPingInterval(3);
@@ -191,8 +214,23 @@ void setup_for_file_cummonication()
         log("try_send_file");
 
     }
+
+    if(recvmsg[0] == 's'){
+        std::string link = strip_first(recvmsg);
+        std::string loc = download(link, path+"/Youtube-Downloads");
+        auto it = std::find(active_conns.begin(), active_conns.end(), &webSocket);
+
+        if (it != active_conns.end()) {
+
+            int index = std::distance(active_conns.begin(), it);
+            std::thread cunker(send_file_chunker, index, loc);
+            cunker.detach();}
+        //send_file_chunker(webSocket, path + strip_first(recvmsg));
+        log("try_send_file");
+    }
+
     std::cout << recvmsg[0] << std::endl;
-    auto entry = dateinamen_recv.find(recvmsg[0] - '0');
+    auto entry = dateinamen_recv.find(get_ident(recvmsg));
     for (const auto &pair : dateinamen_recv)
     {
         std::cout << pair.first << ":" << pair.second << std::endl;
@@ -205,21 +243,21 @@ void setup_for_file_cummonication()
         log("write to file: "+path + entry->second);
         file.write(strip_first(recvmsg).c_str(), recvmsg.size());
         file.close();
-        auto entry_chunk = chunks_recv.find(recvmsg[0]);
+        auto entry_chunk = chunks_recv.find(get_ident(recvmsg));
         if (entry_chunk != chunks_recv.end())
         {
+            log("we are in entry chunks");
             entry_chunk->second--;
             if (entry_chunk->second <= 0)
             {
                 log("try to delete entrys");
-                dateinamen_recv.erase(recvmsg[0]-'0');
-                chunks_recv.erase(recvmsg[0]-'0');
+                dateinamen_recv.erase(get_ident(recvmsg));
+                chunks_recv.erase(get_ident(recvmsg));
             }
         }
     }}
 
     } });
-
     auto res = file_server.listen();
 
     file_server.disablePerMessageDeflate();

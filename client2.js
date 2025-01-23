@@ -11,7 +11,6 @@ let totalChunks = 0;
 let filename_glob;
 let counter = 0;
 
-
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -55,9 +54,6 @@ async function list_files(folder) {
     }
 }
 
-
-
-
 function stringToArrayBuffer(hexString) {
     const byteArray = new Uint8Array(hexString.length / 2);
     for (let i = 0; i < hexString.length; i += 2) {
@@ -66,13 +62,8 @@ function stringToArrayBuffer(hexString) {
     return byteArray.buffer;
 }
 
-
 const chunksize = 2 * 1024 * 1024; 
 const send_delay = 200; 
-
-
-
-
 
 async function make_file(filename) {
     if (wopened) {
@@ -141,12 +132,10 @@ async function sendChunks() {
     readNextChunk();
 }
 
-
-
-
 async function _read_file(filename) {
     msend("r/" + filename);
     filename_glob = filename;
+    await createFile(filename);
     read_active = true;
 }
 
@@ -154,10 +143,7 @@ async function pinger() {
     msend("p69");
 }
 
-
 setInterval(pinger, 3000);
-
-
 
 socket.onopen = async function (e) {
     wopened = true;
@@ -199,7 +185,7 @@ socket1.onmessage = function (event1) {
             active = false;
             read_active = false;
             counter = 0;
-        } else {
+        } else if (response1 != ""){
             counter++;
             const chunk = response1;
             chunks.push(chunk);

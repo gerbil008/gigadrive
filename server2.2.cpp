@@ -5,7 +5,7 @@ ix::WebSocketServer cum_server(wport, "0.0.0.0");
 std::map<ix::WebSocket*, std::string> filenames;
 std::set<ix::WebSocket*> m_connections;
 
-int identnum = 1;
+int identnum = 100;
 
 int get_storage_free(const std::string& path) {
     struct statvfs buffer;
@@ -118,7 +118,13 @@ std::string list_files(std::string folder){
 
 
 void setup_for_cummonication(){
-cum_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket & webSocket, const ix::WebSocketMessagePtr & msg) {
+        ix::SocketTLSOptions tlsOptions;
+    tlsOptions.certFile = ca_path+"fullchain.pem";
+    tlsOptions.keyFile = ca_path+"privkey.pem";
+    tlsOptions.caFile = ca_path+"fullchain.pem";
+
+    cum_server.setTLSOptions(tlsOptions);
+    cum_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket & webSocket, const ix::WebSocketMessagePtr & msg) {
 
     std::cout << "id " << connectionState->getId() << std::endl;
 
@@ -155,6 +161,9 @@ cum_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> co
             dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
             chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
             webSocket.send(std::to_string(identnum));
+            if(identnum <= 999){
+                identnum = 99;
+            }
             identnum++;
             break;}
         case 'l':
