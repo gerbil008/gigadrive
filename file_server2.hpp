@@ -57,6 +57,37 @@ std::string trim_ex(const std::string &str)
     return str.substr(start, end - start + 1);
 }
 
+void listFilesRecursive(const fs::path& folderPath, const fs::path& basePath, nlohmann::json& jsonArray) {
+    try {
+        for (const auto& entry : fs::directory_iterator(folderPath)) {
+            if (fs::is_regular_file(entry.path())) {
+                std::string relativePath = "/" + entry.path().string().substr(basePath.string().size() + 1);
+                jsonArray.push_back(relativePath);
+            } else if (fs::is_directory(entry.path())) {
+                listFilesRecursive(entry.path(), basePath, jsonArray);
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Fehler: " << e.what() << std::endl;
+    }
+}
+
+std::string listAllFilesAsJson(const std::string& folderPath) {
+    nlohmann::json jsonArray = nlohmann::json::array();
+    fs::path basePath = folderPath;
+    while (basePath.has_parent_path() && basePath.filename() != "contents") {
+        basePath = basePath.parent_path();
+    }
+
+    if (basePath.filename() != "contents") {
+        std::cerr << "Fehler: 'contents' Verzeichnis nicht gefunden!\n";
+        return "{}";
+    }
+
+    listFilesRecursive(folderPath, basePath, jsonArray);
+    return jsonArray.dump(4);
+}
+
 std::string host("0.0.0.0");
 ix::WebSocketServer file_server(wport_files, host, ix::SocketServer::kDefaultTcpBacklog, ix::SocketServer::kDefaultMaxConnections, 1800, ix::SocketServer::kDefaultAddressFamily);
 
@@ -165,12 +196,19 @@ std::string download(const std::string& url, const std::string& downloadPath) {
     return fileName;
 }
 
+std::string strip_ident(std::string msg){
+    if (msg.size() > 3) {
+        msg.erase(0, 3); 
+    }
+    return msg;
+}
+
 void setup_for_file_cummonication()
 {
     ix::SocketTLSOptions tlsOptions;
-    tlsOptions.certFile = ca_path+"fullchain.pem";
-    tlsOptions.keyFile = ca_path+"privkey.pem";
-    tlsOptions.caFile = ca_path+"fullchain.pem";
+    tlsOptions.certFile = "fullchain.pem";
+    tlsOptions.keyFile = "privkey.pem";
+    tlsOptions.caFile = "fullchain.pem";
 
     file_server.setTLSOptions(tlsOptions);
 
@@ -240,8 +278,9 @@ void setup_for_file_cummonication()
     {
         log("entry filename" + entry->second);
         std::ofstream file(path + entry->second, std::ios::binary | std::ios::app);
-        log("write to file: "+path + entry->second);
-        file.write(strip_first(recvmsg).c_str(), recvmsg.size());
+        log("write to file: " + path + entry->second);
+        log("stripped ident: "+strip_ident(recvmsg));
+        file.write(strip_ident(recvmsg).c_str(), recvmsg.size()-3);
         file.close();
         auto entry_chunk = chunks_recv.find(get_ident(recvmsg));
         if (entry_chunk != chunks_recv.end())

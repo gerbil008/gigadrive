@@ -104,6 +104,23 @@ int check_if_make_fille(std::string filename){
 
 }
 
+std::string listFilesInFolder(const std::string& folderPath) {
+    namespace fs = std::filesystem;
+    nlohmann::json jsonArray = nlohmann::json::array();
+
+    try {
+        for (const auto& entry : fs::directory_iterator(path+folderPath)) {
+            if (fs::is_regular_file(entry.path())) {
+                jsonArray.push_back(entry.path().filename().string());
+            }
+        }
+    } catch (const std::exception& e) {
+        return std::string("{\"error\": \"") + e.what() + "\"}";
+    }
+
+    return jsonArray.dump(4);
+}
+
 std::string list_files(std::string folder){
     json files = json::parse("[]");
     std::string fileContent = read_file("files.json");
@@ -119,9 +136,9 @@ std::string list_files(std::string folder){
 
 void setup_for_cummonication(){
         ix::SocketTLSOptions tlsOptions;
-    tlsOptions.certFile = ca_path+"fullchain.pem";
-    tlsOptions.keyFile = ca_path+"privkey.pem";
-    tlsOptions.caFile = ca_path+"fullchain.pem";
+    tlsOptions.certFile = "fullchain.pem";
+    tlsOptions.keyFile = "privkey.pem";
+    tlsOptions.caFile = "fullchain.pem";
 
     cum_server.setTLSOptions(tlsOptions);
     cum_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket & webSocket, const ix::WebSocketMessagePtr & msg) {
@@ -167,7 +184,8 @@ void setup_for_cummonication(){
             identnum++;
             break;}
         case 'l':
-            webSocket.send(list_files(strip_first(recvmsg)));
+            webSocket.send(listAllFilesAsJson(path+strip_first(recvmsg)));
+            log(listAllFilesAsJson(path+strip_first(recvmsg)));
             break;
         case 'd':{
             std::remove((path+strip_first(recvmsg)).c_str());
