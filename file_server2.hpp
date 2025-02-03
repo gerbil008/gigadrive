@@ -209,7 +209,7 @@ void setup_for_file_cummonication()
     tlsOptions.certFile = "fullchain.pem";
     tlsOptions.keyFile = "privkey.pem";
     tlsOptions.caFile = "fullchain.pem";
-    
+
     file_server.setTLSOptions(tlsOptions);
 
     file_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket &webSocket, const ix::WebSocketMessagePtr &msg)
@@ -292,6 +292,7 @@ void setup_for_file_cummonication()
                 log("try to delete entrys");
                 dateinamen_recv.erase(get_ident(recvmsg));
                 chunks_recv.erase(get_ident(recvmsg));
+                webSocket.send("d");
             }
         }
     }}

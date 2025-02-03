@@ -10,6 +10,11 @@ let fileName = "";
 let totalChunks = 0;
 let filename_glob;
 let counter = 0;
+let _chunks_total_send;
+let _chunks_send;
+let _chunks_total_receive;
+let _chunks_receive;
+const _chunks_multiple = 3;
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -84,6 +89,9 @@ async function sendChunks() {
     const file = fileInput.files[0];
     const size = file.size;
     const totalChunks = Math.ceil(size / chunksize);
+    _chunks_total_send = totalChunks*_chunks_multiple;
+
+    _chunks_send = 0;
 
     if (wopened) {
         const path = `w/${file.name}%${totalChunks}`;
@@ -116,6 +124,7 @@ async function sendChunks() {
         socket1.send(combined);
 
         currentChunk++;
+        _chunks_send++;
 
         if (currentChunk < totalChunks) {
             setTimeout(() => readNextChunk(), send_delay);
@@ -132,10 +141,23 @@ async function sendChunks() {
     readNextChunk();
 }
 
+async function sigma_counter(){
+    while(true){
+    sleep(0.7);
+    if(_chunks_send != _chunks_total_send -1){
+            _chunks_send++;
+    }
+    else{
+        break
+    }}
+}
+
 async function _read_file(filename) {
+    _chunks_receive = 0;
+    _chunks_total_receive
     msend("r/" + filename);
     filename_glob = filename;
-    await createFile(filename);
+    //await createFile(filename);
     read_active = true;
 }
 
@@ -174,6 +196,10 @@ socket1.onopen = async function (e) {
 socket1.onmessage = function (event1) {
     response1 = event1.data;
     console.log(event1.data);
+    if(response1 == "d"){
+        response1 = "";
+        _chunks_send = _chunks_total_send;
+    }
     if (read_active) {
         if (response1 == "e") {
             const blob = new Blob(chunks);
@@ -185,12 +211,15 @@ socket1.onmessage = function (event1) {
             active = false;
             read_active = false;
             counter = 0;
+            _chunks_receive = 0;
+            _chunks_total_receive = 0;
         } else if (response1 != ""){
             counter++;
             const chunk = response1;
             chunks.push(chunk);
             response1 = "";
             console.log(counter);
+            _chunks_receive++;
         }
     }
 };
