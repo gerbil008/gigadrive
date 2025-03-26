@@ -19,6 +19,7 @@
 #include <sys/statvfs.h>
 #include <thread>
 #include <vector>
+#include "gigasocket.hpp"
 
 using json = nlohmann::json;
 
@@ -36,7 +37,7 @@ std::mutex _var_lock;
 using namespace std;
 namespace fs = std::filesystem;
 
-const std::string path = "/home/gigaserver/contents";
+const std::string path = "/home/gerbil/contents";
 
 std::map<int, std::string> dateinamen_recv;
 std::map<int, int> chunks_recv;
@@ -342,8 +343,13 @@ void setup_for_file_cummonication() {
             }
         }
     });
+    ix::SocketTLSOptions tlsOptions;
+    tlsOptions.certFile = "server.crt";
+    tlsOptions.keyFile = "server.key";
+    tlsOptions.tls = true;
+    file_server.setTLSOptions(tlsOptions);
 
-        auto res = file_server.listen();
+    auto res = file_server.listen();
 
     file_server.disablePerMessageDeflate();
     file_server.start();

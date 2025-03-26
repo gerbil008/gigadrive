@@ -28,9 +28,10 @@ function msend(msg) {
     socket1.send(msg);
 }
 
+//sleep(500);
+let socket = new WebSocket("ws://gigadrive.ddns.net:12369");
+let socket1 = new WebSocket("ws://gigadrive.ddns.net:12368");
 sleep(500);
-let socket = new WebSocket("ws://localhost:12369");
-let socket1 = new WebSocket("ws://localhost:12368");
 
 async function delete_file(filename) {
     running = true;
@@ -129,6 +130,9 @@ async function sendChunks() {
         if (currentChunk < totalChunks) {
             setTimeout(() => readNextChunk(), send_delay);
         }
+        else{
+            sigma_counter();
+        }
     };
 
     function readNextChunk() {
@@ -158,6 +162,11 @@ async function _read_file(filename) {
     msend("r/" + filename);
     filename_glob = filename;
     //await createFile(filename);
+    while (response1 == "") {
+        await sleep(10);
+    }
+    _chunks_total_receive = response1;
+    response1 = "";
     read_active = true;
 }
 

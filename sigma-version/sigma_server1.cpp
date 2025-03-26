@@ -1,9 +1,27 @@
-#include "file_server2.hpp"
-#include <ixwebsocket/IXWebSocketServer.h>
+#include "sigma_fileserver2.hpp"
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl/context.hpp>
+#include <boost/asio/strand.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/websocket.hpp>
+#include <chrono>
+#include <iostream>
+#include <thread>
 
-ix::WebSocketServer cum_server(wport, "0.0.0.0");
-std::map<ix::WebSocket*, std::string> filenames;
-std::set<ix::WebSocket*> m_connections;
+namespace beast = boost::beast;
+namespace http = beast::http;
+namespace websocket = beast::websocket;
+namespace net = boost::asio;
+using tcp = net::ip::tcp;
+
+beast::ssl_stream<beast::tcp_stream> cumstream;
+websocket::stream<beast::ssl_stream<beast::tcp_stream>> cumws;
+
+beast::flat_buffer cumbuffer;
+
+std::map<websocket::stream<beast::ssl_stream<beast::tcp_stream>>, std::string> filenames;
+std::set<websocket::stream<beast::ssl_stream<beast::tcp_stream>>> m_connections;
 
 int identnum = 100;
 
@@ -129,82 +147,103 @@ std::string list_files(std::string folder) {
     return files.dump(4);
 }
 
-void setup_for_cummonication() {
+int routine() {
+    std::string cumstr = boost::beast::buffers_to_string(filebuffer.data());
+    std::cout << "Received: " << cumstr << std::endl;
 
-    // cum_server.setTLSOptions(tlsOptions);
-    cum_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState,
-                                             ix::WebSocket& webSocket, const ix::WebSocketMessagePtr& msg) {
-        std::cout << "id " << connectionState->getId() << std::endl;
-
-        if (msg->type == ix::WebSocketMessageType::Open) {
-            m_connections.insert(&webSocket);
-            std::cout << "Client connected! Total clients: " << m_connections.size() << std::endl;
+    const std::string recvmsg = cumstr;
+    cout << recvmsg[0] << endl;
+    auto it = filenames.find(cumws);
+    if (it != filenames.end()) {
+        std::ofstream file(path + it->second, std::ios::binary);
+        file.write(recvmsg.c_str(), recvmsg.size());
+        file.close();
+        filenames.erase(cumws);
+    }
+    switch (recvmsg[0]) {
+    case 'm':
+        make_file(strip_first(recvmsg));
+        break;
+    case 'w': {
+        write_file(path + read_until_char(strip_first(recvmsg), '%'), "");
+        log("cleared file: " + path + read_until_char(strip_first(recvmsg), '%'));
+        dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
+        chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
+        cumws.write(std::to_string(identnum));
+        if (identnum <= 999) {
+            identnum = 99;
         }
-
-        else if (msg->type == ix::WebSocketMessageType::Close || msg->type == ix::WebSocketMessageType::Error) {
-            log("Connection with close with id: " + connectionState->getId());
-            m_connections.erase(&webSocket);
-        } else if (msg->type == ix::WebSocketMessageType::Message) {
-            std::cout << "Received: " << msg->str << std::endl;
-
-            const std::string recvmsg = msg->str;
-            cout << recvmsg[0] << endl;
-            auto it = filenames.find(&webSocket);
-            if (it != filenames.end()) {
-                std::ofstream file(path + it->second, std::ios::binary);
-                file.write(recvmsg.c_str(), recvmsg.size());
-                file.close();
-                filenames.erase(&webSocket);
-            }
-            switch (recvmsg[0]) {
-            case 'm':
-                make_file(strip_first(recvmsg));
-                break;
-            case 'w': {
-                write_file(path + read_until_char(strip_first(recvmsg), '%'), "");
-                log("cleared file: " + path + read_until_char(strip_first(recvmsg), '%'));
-                dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
-                chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
-                webSocket.send(std::to_string(identnum));
-                if (identnum <= 999) {
-                    identnum = 99;
-                }
-                identnum++;
-                break;
-            }
-            case 'l':
-                webSocket.send(listAllFilesAsJson(path + strip_first(recvmsg)));
-                log(listAllFilesAsJson(path + strip_first(recvmsg)));
-                break;
-            case 'd': {
-                std::remove((path + strip_first(recvmsg)).c_str());
-                std::vector<std::string> folders = split_str(path + fs::path().parent_path().string(), '/');
-                for (std::string folder : folders) {
-                    fs::remove(folder);
-                }
-                delete_json(trim_ex(strip_first(recvmsg)));
-                break;
-            }
-            case 'a':
-                webSocket.send(std::to_string(get_storage_free(path)));
-                break;
-            case 'f':
-                webSocket.send(std::to_string(get_storage_full(path)));
-                break;
-            default:
-                break;
-            }
+        identnum++;
+        break;
+    }
+    case 'l':
+        cumws.write(listAllFilesAsJson(path + strip_first(recvmsg)));
+        log(listAllFilesAsJson(path + strip_first(recvmsg)));
+        break;
+    case 'd': {
+        std::remove((path + strip_first(recvmsg)).c_str());
+        std::vector<std::string> folders = split_str(path + fs::path().parent_path().string(), '/');
+        for (std::string folder : folders) {
+            fs::remove(folder);
         }
-    });
+        delete_json(trim_ex(strip_first(recvmsg)));
+        break;
+    }
+    case 'a':
+        cumws.write(std::to_string(get_storage_free(path)));
+        break;
+    case 'f':
+        cumws.write(std::to_string(get_storage_full(path)));
+        break;
+    default:
+        break;
+    }
+}
 
-    auto res = cum_server.listen();
-    cum_server.disablePerMessageDeflate();
-    cum_server.start();
-    cum_server.wait();
+void handle_session(tcp::socket socket, net::ssl::context& ctx) {
+    try {
+        beast::ssl_stream<beast::tcp_stream> stream(std::move(socket), ctx);
+
+        stream.handshake(net::ssl::stream_base::server);
+        websocket::stream<beast::ssl_stream<beast::tcp_stream>> ws(std::move(stream));
+        ws.accept();
+
+        beast::flat_buffer buffer;
+        while (true) {
+            ws.read(buffer);
+            routine();
+            buffer.clear();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Session error: " << e.what() << std::endl;
+    }
+}
+
+int setup_for_cummonication() {
+    try {
+        net::io_context ioc;
+        net::ssl::context ctx(net::ssl::context::tlsv12);
+
+        ctx.use_certificate_file("server.crt", net::ssl::context::pem);
+        ctx.use_private_key_file("server.key", net::ssl::context::pem);
+
+        tcp::acceptor acceptor(ioc, {tcp::v4(), wport});
+        std::cout << "WebSocket-Server läuft auf wss://localhost:8080" << std::endl;
+
+        while (true) {
+            tcp::socket socket(ioc);
+            acceptor.accept(socket);
+            std::thread(handle_session, std::move(socket), std::ref(ctx)).detach();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Server error: " << e.what() << std::endl;
+    }
+
+    return 0;
 }
 
 int main() {
-    std::thread t(setup_for_file_cummonication);
+    std::thread t(setup_fileserver);
     t.detach();
     setup_for_cummonication();
 }

@@ -1,4 +1,4 @@
-#include "file_server2.hpp"
+#include "fileserver3.hpp"
 #include <ixwebsocket/IXWebSocketServer.h>
 
 ix::WebSocketServer cum_server(wport, "0.0.0.0");
@@ -196,6 +196,11 @@ void setup_for_cummonication() {
             }
         }
     });
+    ix::SocketTLSOptions tlsOptions;
+    tlsOptions.certFile = "server.crt";
+    tlsOptions.keyFile = "server.key";
+    tlsOptions.tls = true;
+    cum_server.setTLSOptions(tlsOptions);
 
     auto res = cum_server.listen();
     cum_server.disablePerMessageDeflate();

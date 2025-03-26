@@ -1,11 +1,8 @@
-#include "file_server2.hpp"
-#include <ixwebsocket/IXWebSocketServer.h>
-
-ix::WebSocketServer cum_server(wport, "0.0.0.0");
-std::map<ix::WebSocket*, std::string> filenames;
-std::set<ix::WebSocket*> m_connections;
+#include "fileserver4.hpp"
 
 int identnum = 100;
+std::map<SSL*, std::string> filenames;
+std::set<SSL*> m_connections;
 
 int get_storage_free(const std::string& path) {
     struct statvfs buffer;
@@ -129,82 +126,69 @@ std::string list_files(std::string folder) {
     return files.dump(4);
 }
 
-void setup_for_cummonication() {
-
-    // cum_server.setTLSOptions(tlsOptions);
-    cum_server.setOnClientMessageCallback([](std::shared_ptr<ix::ConnectionState> connectionState,
-                                             ix::WebSocket& webSocket, const ix::WebSocketMessagePtr& msg) {
-        std::cout << "id " << connectionState->getId() << std::endl;
-
-        if (msg->type == ix::WebSocketMessageType::Open) {
-            m_connections.insert(&webSocket);
-            std::cout << "Client connected! Total clients: " << m_connections.size() << std::endl;
-        }
-
-        else if (msg->type == ix::WebSocketMessageType::Close || msg->type == ix::WebSocketMessageType::Error) {
-            log("Connection with close with id: " + connectionState->getId());
-            m_connections.erase(&webSocket);
-        } else if (msg->type == ix::WebSocketMessageType::Message) {
-            std::cout << "Received: " << msg->str << std::endl;
-
-            const std::string recvmsg = msg->str;
-            cout << recvmsg[0] << endl;
-            auto it = filenames.find(&webSocket);
-            if (it != filenames.end()) {
-                std::ofstream file(path + it->second, std::ios::binary);
-                file.write(recvmsg.c_str(), recvmsg.size());
-                file.close();
-                filenames.erase(&webSocket);
-            }
-            switch (recvmsg[0]) {
-            case 'm':
-                make_file(strip_first(recvmsg));
-                break;
-            case 'w': {
-                write_file(path + read_until_char(strip_first(recvmsg), '%'), "");
-                log("cleared file: " + path + read_until_char(strip_first(recvmsg), '%'));
-                dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
-                chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
-                webSocket.send(std::to_string(identnum));
-                if (identnum <= 999) {
-                    identnum = 99;
-                }
-                identnum++;
-                break;
-            }
-            case 'l':
-                webSocket.send(listAllFilesAsJson(path + strip_first(recvmsg)));
-                log(listAllFilesAsJson(path + strip_first(recvmsg)));
-                break;
-            case 'd': {
-                std::remove((path + strip_first(recvmsg)).c_str());
-                std::vector<std::string> folders = split_str(path + fs::path().parent_path().string(), '/');
-                for (std::string folder : folders) {
-                    fs::remove(folder);
-                }
-                delete_json(trim_ex(strip_first(recvmsg)));
-                break;
-            }
-            case 'a':
-                webSocket.send(std::to_string(get_storage_free(path)));
-                break;
-            case 'f':
-                webSocket.send(std::to_string(get_storage_full(path)));
-                break;
-            default:
-                break;
-            }
-        }
-    });
-
-    auto res = cum_server.listen();
-    cum_server.disablePerMessageDeflate();
-    cum_server.start();
-    cum_server.wait();
-}
-
 int main() {
     std::thread t(setup_for_file_cummonication);
     t.detach();
-    setup_for_cummonication();
-}
+    auto socket_cum = std::make_shared<GigaSocketTLS>(
+        wport, 10, "gigakey.key", "gigacert.crt", nullptr,
+        [](SSL* ssl, int cumfd) {
+            log("Closed client");
+            m_connections.erase(ssl);
+        },
+        [](SSL* ssl, int cumfd) { log("opened socket"); });
+
+    socket_cum->set_callback([socket_cum](SSL* ssl, int cumfd, std::string message) {
+        log("got message: " + message);
+
+        const std::string recvmsg = message;
+        cout << recvmsg[0] << endl;
+        auto it = filenames.find(ssl);
+        if (it != filenames.end()) {
+            std::ofstream file(path + it->second, std::ios::binary);
+            file.write(recvmsg.c_str(), recvmsg.size());
+            file.close();
+            filenames.erase(ssl);
+        }
+        switch (recvmsg[0]) {
+        case 'm':
+            make_file(strip_first(recvmsg));
+            break;
+        case 'w': {
+            write_file(path + read_until_char(strip_first(recvmsg), '%'), "");
+            log("cleared file: " + path + read_until_char(strip_first(recvmsg), '%'));
+            dateinamen_recv.insert({identnum, read_until_char(strip_first(recvmsg), '%')});
+            chunks_recv.insert({identnum, stoi(read_from_char(strip_first(recvmsg), '%'))});
+            socket_cum->send_msg(ssl, std::to_string(identnum), 't');
+            if (identnum <= 999) {
+                identnum = 99;
+            }
+            identnum++;
+            break;
+        }
+        case 'l':{
+            socket_cum->send_msg(ssl, listAllFilesAsJson(path + strip_first(recvmsg)), 't');
+            log(listAllFilesAsJson(path + strip_first(recvmsg)));
+            break;}
+        case 'd': {
+            std::remove((path + strip_first(recvmsg)).c_str());
+            std::vector<std::string> folders = split_str(path + fs::path().parent_path().string(), '/');
+            for (std::string folder : folders) {
+                fs::remove(folder);
+            }
+            delete_json(trim_ex(strip_first(recvmsg)));
+            break;
+        }
+        case 'a':
+            socket_cum->send_msg(ssl, std::to_string(get_storage_free(path)), 't');
+            break;
+        case 'f':
+            socket_cum->send_msg(ssl, std::to_string(get_storage_full(path)), 't');
+            break;
+        default:
+            break;
+        }
+    });
+for(;;){
+    ;
+    //waiting
+}}

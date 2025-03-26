@@ -13,7 +13,7 @@ async function write_file() {
     } else {
         console.error("WebSocket is not open!");
         return false;
-    }
+    } 
 
     const readChunk = async () => {
         if (currentChunk >= totalChunks) {
